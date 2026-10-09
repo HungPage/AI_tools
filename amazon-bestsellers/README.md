@@ -23,6 +23,11 @@ LLM 判斷子品類、品牌、賣點 → Apps Script 寫進 Google 試算表 �
 1. **Google 試算表**（手冊階段 1）：建立「Amazon 熱銷趨勢」，時區設台北；Apps Script 貼上 `apps_script/Code.gs`，
    把 `TOKEN` 改成你自己的長字串，部署成網頁應用程式（執行身分：我；存取權：所有人），複製 `/exec` 網址。
 2. **Dify**：工作室 → 匯入 DSL 檔案 → 選 `dify/workflow_webhook.yml`（匯入失敗或沒有觸發器時改用 `workflow_start.yml`）。
+   - 匯入檔裡的 Webhook 觸發器節點在 Dify 雲端版不會產生 Webhook URL（檢查清單顯示「接收通知：需要 Webhook URL」、
+     「取資料：無效的變數」）。這時刪掉「接收通知」，在畫布新增一個 Webhook 觸發器：POST、`application/json`、
+     Request Body 新增 `datasetId`（String、必填），接到「取資料」。再把「取資料」的 URL 清空，貼
+     `https://api.apify.com/v2/datasets/`，按 `/` 從選單插入新節點的 `datasetId`，最後接 `/items?clean=true&format=json`。
+     變數一定要用選單插入，手打的 `{{#1.datasetId#}}` 會指向已刪除的節點。
    - 右上 **環境變數** 填入三個值：`APIFY_TOKEN`、`SHEET_URL`（上一步的 `/exec` 網址）、`SHEET_TOKEN`（Apps Script 裡的 TOKEN）。
    - 打開「分類」LLM 節點，模型改成你帳號裡可用的模型（匯入檔預設 OpenAI gpt-4o-mini，溫度 0）。
    - 發布，複製 Webhook 觸發器節點上的正式 Webhook URL。
