@@ -39,7 +39,7 @@ def main(items_json: str, results: list) -> dict:
             "currency": it.get("currency") or "$",
             "price_tier": tier,
             "sub_category": sub,
-            "brand": brand or "未知",
+            "brand": brand if brand not in ("", "其他") else "未知",
             "selling_points": points,
         })
     return {

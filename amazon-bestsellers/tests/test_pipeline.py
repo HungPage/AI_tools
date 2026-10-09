@@ -88,6 +88,12 @@ class DifyCodeNodes(unittest.TestCase):
         rows = json.loads(merge.main(prep["items_json"], [])["payload"])["rows"]
         self.assertEqual({(r["sub_category"], r["brand"]) for r in rows}, {("其他", "未知")})
 
+    def test_merge_maps_brand_other_to_unknown(self):
+        prep = prepare.main(FIXTURE.read_text())
+        asin = json.loads(prep["items_json"])[0]["asin"]
+        rows = json.loads(merge.main(prep["items_json"], [f"{asin} | 其他 | 其他 | x"])["payload"])["rows"]
+        self.assertEqual(rows[0]["brand"], "未知")
+
 
 class DifyDsl(unittest.TestCase):
     def check_graph(self, dsl):
