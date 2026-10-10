@@ -18,7 +18,6 @@ LLM 判斷子品類、品牌、賣點 → Apps Script 寫進 Google 試算表 �
 
 ## 設定步驟
 
-金鑰一律存在各服務自己的設定畫面或你電腦的環境變數，不要貼在對話或 commit 進 repo。
 
 1. **Google 試算表**（手冊階段 1）：建立「Amazon 熱銷趨勢」，時區設台北；Apps Script 貼上 `apps_script/Code.gs`，
    把 `TOKEN` 改成你自己的長字串，部署成網頁應用程式（執行身分：我；存取權：所有人），複製 `/exec` 網址。
