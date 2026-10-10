@@ -1,0 +1,539 @@
+app:
+  name: Amazon 熱銷分類
+  mode: workflow
+  icon: 🛒
+  icon_background: '#DFF0F1'
+  description: Apify 熱銷榜 → LLM 分類 → Google 試算表
+  use_icon_as_answer_icon: false
+kind: app
+version: 0.3.0
+dependencies: []
+workflow:
+  conversation_variables: []
+  environment_variables:
+  - id: 6c8b9ed0-49d2-599d-8970-9307a9d344ec
+    name: APIFY_TOKEN
+    value: ''
+    value_type: secret
+    description: Apify Personal API token
+    selector:
+    - env
+    - APIFY_TOKEN
+  - id: df9b4559-655c-5762-ab0d-4cd82a9ee286
+    name: SHEET_URL
+    value: ''
+    value_type: string
+    description: Apps Script 網頁應用程式網址（結尾 /exec）
+    selector:
+    - env
+    - SHEET_URL
+  - id: 75997633-c521-55f8-8c80-a82ca8197030
+    name: SHEET_TOKEN
+    value: ''
+    value_type: secret
+    description: Apps Script 第 2 行的 TOKEN
+    selector:
+    - env
+    - SHEET_TOKEN
+  features:
+    file_upload:
+      enabled: false
+    opening_statement: ''
+    retriever_resource:
+      enabled: false
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+  graph:
+    nodes:
+    - id: '1'
+      type: custom
+      data:
+        selected: false
+        desc: ''
+        type: start
+        title: 接收通知
+        variables:
+        - variable: datasetId
+          label: datasetId
+          type: text-input
+          required: true
+          max_length: 256
+          options: []
+      position:
+        x: 30
+        y: 300
+      positionAbsolute:
+        x: 30
+        y: 300
+      width: 244
+      height: 90
+      sourcePosition: right
+      targetPosition: left
+    - id: '2'
+      type: custom
+      data:
+        selected: false
+        desc: ''
+        type: http-request
+        title: 取資料
+        method: get
+        url: https://api.apify.com/v2/datasets/{{#1.datasetId#}}/items?clean=true&format=json
+        authorization:
+          type: no-auth
+          config: null
+        headers: Authorization:Bearer {{#env.APIFY_TOKEN#}}
+        params: ''
+        body:
+          type: none
+          data: []
+        timeout: &id001
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        ssl_verify: true
+        variables: []
+        retry_config: &id002
+          enabled: true
+          max_retries: 3
+          retry_interval: 1000
+      position:
+        x: 330
+        y: 300
+      positionAbsolute:
+        x: 330
+        y: 300
+      width: 244
+      height: 90
+      sourcePosition: right
+      targetPosition: left
+    - id: '3'
+      type: custom
+      data:
+        selected: false
+        desc: ''
+        type: code
+        title: 整理
+        code_language: python3
+        code: |
+          import json
+          import re
+
+          BATCH_SIZE = 25
+
+
+          def main(body: str) -> dict:
+              data = json.loads(body)
+              items, lines, seen = [], [], set()
+              for it in data:
+                  if not isinstance(it, dict) or it.get("error"):
+                      continue
+                  url = it.get("url") or ""
+                  m = re.search(r"/(?:dp|gp/product)/([A-Z0-9]{10})", url)
+                  asin = it.get("asin") or (m.group(1) if m else "")
+                  cat = it.get("category") or it.get("categoryName") or ""
+                  cat = re.sub(r"^Amazon Best Sellers:\s*(Best\s+)?", "", cat).strip()
+                  key = asin + "@" + cat
+                  if not asin or key in seen:
+                      continue
+                  seen.add(key)
+                  name = it.get("name") or it.get("title") or ""
+                  name = name.replace("&amp;", "&").replace("|", "/").strip()[:120]
+                  price = it.get("price")
+                  if isinstance(price, dict):
+                      price = price.get("value")
+                  items.append({
+                      "asin": asin,
+                      "rank": it.get("position") or it.get("rank"),
+                      "title": name,
+                      "price": price,
+                      "currency": it.get("currency") or "$",
+                      "category": cat,
+                  })
+                  lines.append(asin + " | " + name)
+              batches = [
+                  "\n".join(lines[i:i + BATCH_SIZE])
+                  for i in range(0, len(lines), BATCH_SIZE)
+              ]
+              return {
+                  "items_json": json.dumps(items, ensure_ascii=False),
+                  "batches": batches,
+                  "count": len(items),
+              }
+        variables:
+        - variable: body
+          value_selector:
+          - '2'
+          - body
+        outputs:
+          items_json:
+            type: string
+            children: null
+          batches:
+            type: array[string]
+            children: null
+          count:
+            type: number
+            children: null
+      position:
+        x: 630
+        y: 300
+      positionAbsolute:
+        x: 630
+        y: 300
+      width: 244
+      height: 90
+      sourcePosition: right
+      targetPosition: left
+    - id: '4'
+      type: custom
+      data:
+        selected: false
+        desc: ''
+        type: iteration
+        title: 分批
+        iterator_selector:
+        - '3'
+        - batches
+        iterator_input_type: array[string]
+        output_selector:
+        - '5'
+        - text
+        output_type: array[string]
+        start_node_id: 4start
+        is_parallel: false
+        parallel_nums: 4
+        error_handle_mode: terminated
+        width: 400
+        height: 200
+      position:
+        x: 930
+        y: 300
+      positionAbsolute:
+        x: 930
+        y: 300
+      width: 400
+      height: 200
+      sourcePosition: right
+      targetPosition: left
+      zIndex: 1
+    - id: 4start
+      type: custom-iteration-start
+      data:
+        selected: false
+        desc: ''
+        type: iteration-start
+        title: ''
+        isInIteration: true
+      position:
+        x: 24
+        y: 68
+      positionAbsolute:
+        x: 24
+        y: 68
+      width: 44
+      height: 48
+      sourcePosition: right
+      targetPosition: left
+      parentId: '4'
+      draggable: false
+      selectable: false
+      zIndex: 1002
+    - id: '5'
+      type: custom
+      data:
+        selected: false
+        desc: ''
+        type: llm
+        title: 分類
+        isInIteration: true
+        iteration_id: '4'
+        model:
+          provider: langgenius/openai/openai
+          name: gpt-4o-mini
+          mode: chat
+          completion_params:
+            temperature: 0
+        prompt_template:
+        - id: llm-user
+          role: user
+          text: |-
+            你是電商商品分類助手。下面每一行是一個 Amazon 商品，格式為「ASIN | 英文商品名稱」。
+
+            請為每一行輸出一行結果，格式嚴格如下，用「|」分隔，不要標題列、不要編號、不要任何其他文字：
+            ASIN | 子品類 | 品牌 | 賣點
+
+            規則：
+            - ASIN：原樣回傳，不可更改。
+            - 子品類：只能從下列清單選一個，一字不差；真的都不符合才填「其他」。歸類參考：
+              耳機與音訊：耳機、耳機盒與保護套、藍牙喇叭、Soundbar
+              手機與平板配件：平板電腦、電子書閱讀器（Kindle）、手機殼、保護貼、手機支架
+              充電與線材：充電器、行動電源、傳輸線、延長線、電源插座與突波保護器
+              電腦與周邊：筆電、桌機、螢幕、鍵盤、滑鼠、網路設備
+              儲存裝置：硬碟、SSD、記憶卡、隨身碟
+              智慧家庭：智慧音箱（Echo）、智慧插座、門鈴、監視器、防丟追蹤器（AirTag、Tile）
+              電視與影音串流：電視、串流棒、電視遙控器、電視壁掛架
+              相機與攝影：相機、鏡頭、腳架、運動攝影機
+              穿戴裝置：智慧手錶、運動手環
+              遊戲周邊：遊戲機、手把、電競配件
+              廚房家電：製冰機、咖啡機、氣炸鍋、微波爐、果汁機、抽油煙機、桌上型洗碗機
+              清潔與空氣家電：吸塵器、掃地機器人、空氣清淨機、除濕機、電風扇
+              大型家電與零件：冰箱、迷你冰箱、飲料冰箱、冷凍櫃、洗衣機、乾衣機，以及這些家電的濾心、排風管、清潔劑等零件耗材
+              個人護理家電：吹風機、電動牙刷、刮鬍刀、美容儀
+            - 品牌：從商品名稱判斷，保留英文原名（例如 Apple、Anker）；判斷不出來填「未知」，不要填「其他」。
+            - 賣點：最多 3 個繁體中文關鍵字，每個不超過 6 個字，用「、」分隔；只能根據商品名稱，不要自行推測。
+
+            商品清單：
+            {{#4.item#}}
+        context:
+          enabled: false
+          variable_selector: []
+        vision:
+          enabled: false
+        variables: []
+      position:
+        x: 128
+        y: 65
+      positionAbsolute:
+        x: 128
+        y: 65
+      width: 244
+      height: 90
+      sourcePosition: right
+      targetPosition: left
+      parentId: '4'
+      extent: parent
+      zIndex: 1002
+    - id: '6'
+      type: custom
+      data:
+        selected: false
+        desc: ''
+        type: code
+        title: 合併
+        code_language: python3
+        code: |
+          import json
+          import re
+          from datetime import datetime, timedelta, timezone
+
+          SUBS = [
+              "耳機與音訊", "手機與平板配件", "充電與線材", "電腦與周邊", "儲存裝置",
+              "智慧家庭", "電視與影音串流", "相機與攝影", "穿戴裝置", "遊戲周邊",
+              "廚房家電", "清潔與空氣家電", "大型家電與零件", "個人護理家電", "其他",
+          ]
+          LOW, HIGH = 25, 100  # 美元：低於 25 為低價，25 至 100 為中價，高於 100 為高價
+
+
+          def main(items_json: str, results: list) -> dict:
+              items = json.loads(items_json)
+              cls = {}
+              for chunk in results or []:
+                  for line in str(chunk).splitlines():
+                      parts = [p.strip() for p in line.split("|")]
+                      if len(parts) >= 4 and re.fullmatch(r"[A-Z0-9]{10}", parts[0]):
+                          cls[parts[0]] = parts[1:4]
+              today = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d")  # 台北日期
+              rows = []
+              for it in items:
+                  sub, brand, points = cls.get(it["asin"], ["其他", "未知", ""])
+                  if sub not in SUBS:
+                      sub = "其他"
+                  price = it.get("price")
+                  if isinstance(price, (int, float)):
+                      tier = "低" if price < LOW else ("中" if price <= HIGH else "高")
+                  else:
+                      price, tier = "", "未知"
+                  rows.append({
+                      "date": today,
+                      "asin": it["asin"],
+                      "title": it["title"],
+                      "category": it["category"],
+                      "rank": it.get("rank") or "",
+                      "price": price,
+                      "currency": it.get("currency") or "$",
+                      "price_tier": tier,
+                      "sub_category": sub,
+                      "brand": brand if brand not in ("", "其他") else "未知",
+                      "selling_points": points,
+                  })
+              return {
+                  "payload": json.dumps({"rows": rows}, ensure_ascii=False),
+                  "count": len(rows),
+              }
+        variables:
+        - variable: items_json
+          value_selector:
+          - '3'
+          - items_json
+        - variable: results
+          value_selector:
+          - '4'
+          - output
+        outputs:
+          payload:
+            type: string
+            children: null
+          count:
+            type: number
+            children: null
+      position:
+        x: 1430
+        y: 300
+      positionAbsolute:
+        x: 1430
+        y: 300
+      width: 244
+      height: 90
+      sourcePosition: right
+      targetPosition: left
+    - id: '7'
+      type: custom
+      data:
+        selected: false
+        desc: ''
+        type: http-request
+        title: 寫入試算表
+        method: post
+        url: '{{#env.SHEET_URL#}}?token={{#env.SHEET_TOKEN#}}'
+        authorization:
+          type: no-auth
+          config: null
+        headers: Content-Type:application/json
+        params: ''
+        body:
+          type: json
+          data:
+          - id: body-payload
+            key: ''
+            type: text
+            value: '{{#6.payload#}}'
+        timeout: *id001
+        ssl_verify: true
+        variables: []
+        retry_config: *id002
+      position:
+        x: 1730
+        y: 300
+      positionAbsolute:
+        x: 1730
+        y: 300
+      width: 244
+      height: 90
+      sourcePosition: right
+      targetPosition: left
+    - id: '8'
+      type: custom
+      data:
+        selected: false
+        desc: ''
+        type: end
+        title: 結束
+        outputs:
+        - variable: count
+          value_selector:
+          - '6'
+          - count
+        - variable: sheet_response
+          value_selector:
+          - '7'
+          - body
+      position:
+        x: 2030
+        y: 300
+      positionAbsolute:
+        x: 2030
+        y: 300
+      width: 244
+      height: 90
+      sourcePosition: right
+      targetPosition: left
+    edges:
+    - id: 1-source-2-target
+      source: '1'
+      sourceHandle: source
+      target: '2'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+      data:
+        sourceType: start
+        targetType: http-request
+        isInIteration: false
+    - id: 2-source-3-target
+      source: '2'
+      sourceHandle: source
+      target: '3'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+      data:
+        sourceType: http-request
+        targetType: code
+        isInIteration: false
+    - id: 3-source-4-target
+      source: '3'
+      sourceHandle: source
+      target: '4'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+      data:
+        sourceType: code
+        targetType: iteration
+        isInIteration: false
+    - id: 4start-source-5-target
+      source: 4start
+      sourceHandle: source
+      target: '5'
+      targetHandle: target
+      type: custom
+      zIndex: 1002
+      data:
+        sourceType: iteration-start
+        targetType: llm
+        isInIteration: true
+        iteration_id: '4'
+    - id: 4-source-6-target
+      source: '4'
+      sourceHandle: source
+      target: '6'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+      data:
+        sourceType: iteration
+        targetType: code
+        isInIteration: false
+    - id: 6-source-7-target
+      source: '6'
+      sourceHandle: source
+      target: '7'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+      data:
+        sourceType: code
+        targetType: http-request
+        isInIteration: false
+    - id: 7-source-8-target
+      source: '7'
+      sourceHandle: source
+      target: '8'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+      data:
+        sourceType: http-request
+        targetType: end
+        isInIteration: false
+    viewport:
+      x: 0
+      y: 0
+      zoom: 0.6

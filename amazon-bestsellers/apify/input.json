@@ -1,0 +1,11 @@
+{
+  "categoryUrls": [
+    "https://www.amazon.com/Best-Sellers-Electronics/zgbs/electronics/",
+    "https://www.amazon.com/Best-Sellers-Appliances/zgbs/appliances/"
+  ],
+  "maxItemsPerStartUrl": 50,
+  "depthOfCrawl": 1,
+  "language": "en",
+  "detailedInformation": false,
+  "useCaptchaSolver": false
+}
